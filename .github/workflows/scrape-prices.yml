@@ -19,7 +19,8 @@ jobs:
 
       - name: Install dependencies
         run: npm install
-        - name: Run scraper for all tracked products
+
+      - name: Run scraper for all tracked products
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
