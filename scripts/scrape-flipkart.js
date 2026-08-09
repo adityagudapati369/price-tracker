@@ -13,8 +13,18 @@ function isShortLink(url) {
   return /dl\.flipkart\.com|fkrt\.(co|it)/i.test(url);
 }
 
+const UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
+
 async function resolveShortLink(url) {
-  const res = await fetch(buildScraperApiUrl(url));
+  const res = await fetch(url, {
+    method: "GET",
+    redirect: "follow",
+    headers: {
+      "User-Agent": UA,
+      "Accept-Language": "en-IN,en;q=0.9",
+    },
+  });
   return res.url || url;
 }
 
@@ -82,6 +92,11 @@ async function scrapeFlipkart(inputUrl) {
     const priceText = $("div.Nx9bqj.CxhGGd").first().text().trim() || $("div._30jeq3").first().text().trim();
     price = parsePrice(priceText);
   }
+  if (!price) {
+    const bodyText = $("body").text();
+    const match = bodyText.match(/₹\s?[\d,]+(?:\.\d{1,2})?/);
+    if (match) price = parsePrice(match[0]);
+  }
   if (!mrp) {
     const mrpText = $("div.yRaY8j.A6\\+E6v").first().text().trim() || $("div._3I9_wc").first().text().trim();
     mrp = parsePrice(mrpText) || price;
@@ -91,6 +106,10 @@ async function scrapeFlipkart(inputUrl) {
   }
 
   const in_stock = !/sold out|out of stock/i.test(html.slice(0, 20000));
+
+  if (!price) {
+    console.warn(`[flipkart/${pid}] price selectors all failed. Title found: ${!!title}. HTML length: ${html.length}`);
+  }
 
   return {
     platform: "flipkart",

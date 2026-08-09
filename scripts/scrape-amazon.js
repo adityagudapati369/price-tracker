@@ -37,17 +37,25 @@ async function scrapeAmazon(url) {
   const $ = cheerio.load(html);
 
   if ($("form[action*='validateCaptcha']").length > 0 || /Enter the characters you see below/i.test(html)) {
-    throw new Error(`Amazon blocked the request (CAPTCHA) for ASIN ${asin} — consider slowing scrape rate or rotating IP`);
+    throw new Error(`Amazon blocked the request (CAPTCHA) for ASIN ${asin}`);
   }
 
-  const title = $("#productTitle").text().trim() || null;
+  const title =
+    $("#productTitle").text().trim() ||
+    $("span#title").text().trim() ||
+    $("h1.product-title-word-break").text().trim() ||
+    null;
 
   const priceSelectors = [
     "#corePrice_feature_div .a-price .a-offscreen",
     "#corePriceDisplay_desktop_feature_div .a-price .a-offscreen",
     ".priceToPay .a-offscreen",
+    ".reinventPricePriceToPayMargin .a-offscreen",
+    "span.a-price[data-a-size='xl'] .a-offscreen",
+    "span.a-price .a-offscreen",
     "#priceblock_ourprice",
     "#priceblock_dealprice",
+    "#tp_price_block_total_price_ww .a-offscreen",
   ];
   let priceText = null;
   for (const sel of priceSelectors) {
@@ -57,11 +65,20 @@ async function scrapeAmazon(url) {
       break;
     }
   }
-  const price = parsePrice(priceText);
+  let price = parsePrice(priceText);
+
+  if (!price) {
+    const bodyText = $("body").text();
+    const match = bodyText.match(/₹\s?[\d,]+(?:\.\d{1,2})?/);
+    if (match) {
+      price = parsePrice(match[0]);
+    }
+  }
 
   const mrpSelectors = [
     "#corePriceDisplay_desktop_feature_div .a-text-price .a-offscreen",
     ".basisPrice .a-offscreen",
+    "span.a-text-price .a-offscreen",
   ];
   let mrpText = null;
   for (const sel of mrpSelectors) {
@@ -76,9 +93,14 @@ async function scrapeAmazon(url) {
   const image_url =
     $("#landingImage").attr("src") ||
     $("#imgTagWrapperId img").attr("src") ||
+    $("#landingImage").attr("data-old-hires") ||
     null;
 
   const in_stock = !/currently unavailable/i.test(html);
+
+  if (!price) {
+    console.warn(`[amazon/${asin}] price selectors all failed. Title found: ${!!title}. HTML length: ${html.length}`);
+  }
 
   return {
     platform: "amazon",
