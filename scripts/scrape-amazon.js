@@ -1,25 +1,15 @@
 // scripts/scrape-amazon.js
-// Fetches an Amazon.in product page and extracts price/title/image.
-// Usage: node scrape-amazon.js <amazon_product_url>
-// Or import scrapeAmazon(url) and call it from a batch runner.
-
 const fetch = require("node-fetch");
 const cheerio = require("cheerio");
 const { saveProductSnapshot } = require("./shared/writeToSupabase");
 
-// Rotate a few realistic desktop user-agents to reduce bot-block chance.
-const USER_AGENTS = [
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-];
+const SCRAPERAPI_KEY = process.env.SCRAPERAPI_KEY;
 
-function randomUA() {
-  return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
+function buildScraperApiUrl(targetUrl) {
+  return `http://api.scraperapi.com?api_key=${SCRAPERAPI_KEY}&url=${encodeURIComponent(targetUrl)}&country_code=in`;
 }
 
 function extractASIN(url) {
-  // Handles /dp/ASIN, /gp/product/ASIN, and query-string variants
   const match = url.match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i);
   return match ? match[1] : null;
 }
@@ -37,14 +27,7 @@ async function scrapeAmazon(url) {
     throw new Error(`Could not extract ASIN from URL: ${url}`);
   }
 
-  const res = await fetch(url, {
-    headers: {
-      "User-Agent": randomUA(),
-      "Accept-Language": "en-IN,en;q=0.9",
-      Accept:
-        "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-    },
-  });
+  const res = await fetch(buildScraperApiUrl(url));
 
   if (!res.ok) {
     throw new Error(`Amazon fetch failed: HTTP ${res.status} for ASIN ${asin}`);
@@ -53,14 +36,12 @@ async function scrapeAmazon(url) {
   const html = await res.text();
   const $ = cheerio.load(html);
 
-  // Basic bot-block detection — Amazon shows a CAPTCHA page when blocked
   if ($("form[action*='validateCaptcha']").length > 0 || /Enter the characters you see below/i.test(html)) {
     throw new Error(`Amazon blocked the request (CAPTCHA) for ASIN ${asin} — consider slowing scrape rate or rotating IP`);
   }
 
   const title = $("#productTitle").text().trim() || null;
 
-  // Amazon has several possible price element selectors depending on layout
   const priceSelectors = [
     "#corePrice_feature_div .a-price .a-offscreen",
     "#corePriceDisplay_desktop_feature_div .a-price .a-offscreen",
@@ -111,7 +92,6 @@ async function scrapeAmazon(url) {
   };
 }
 
-// CLI entry point: node scrape-amazon.js <url>
 if (require.main === module) {
   const url = process.argv[2];
   if (!url) {
