@@ -265,7 +265,7 @@
 // ============================================================
 // SUPABASE CLIENT
 // ============================================================
-const supabase = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+const sb = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
 
 // ============================================================
 // HELPERS
@@ -325,7 +325,7 @@ trackBtn.addEventListener("click", async () => {
     // a temporary unique key to avoid duplicate inserts before first scrape.
     const tempId = url.split("?")[0].split("/").filter(Boolean).pop() || url;
 
-    const { error } = await supabase.from("products").insert({
+    const { error } = await sb.from("products").insert({
       platform,
       product_id: tempId,
       product_url: url,
@@ -482,7 +482,7 @@ document.getElementById("setAlertBtn").addEventListener("click", async () => {
     return;
   }
 
-  const { error } = await supabase.from("alerts").insert({
+  const { error } = await sb.from("alerts").insert({
     product_id: currentProductId,
     contact_method: "telegram",
     contact_value: contact,
