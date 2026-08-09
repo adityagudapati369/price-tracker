@@ -1,5 +1,6 @@
 // scripts/scrape-flipkart.js
 // Fetches a Flipkart product page and extracts price/title/image.
+// Handles both full product URLs and short share links (dl.flipkart.com).
 // Usage: node scrape-flipkart.js <flipkart_product_url>
 
 const fetch = require("node-fetch");
@@ -16,13 +17,29 @@ function randomUA() {
   return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
 }
 
+// Detects Flipkart's short/share link formats (dl.flipkart.com, fkrt.co, etc.)
+function isShortLink(url) {
+  return /dl\.flipkart\.com|fkrt\.(co|it)/i.test(url);
+}
+
+// Follows redirects on a short link and returns the final resolved URL.
+async function resolveShortLink(url) {
+  const res = await fetch(url, {
+    method: "GET",
+    redirect: "follow",
+    headers: {
+      "User-Agent": randomUA(),
+      "Accept-Language": "en-IN,en;q=0.9",
+    },
+  });
+  return res.url || url;
+}
+
 function extractFSN(url) {
-  // Flipkart product IDs (pid) appear as a query param, e.g. ?pid=MOBFWQ6BZ...
   const u = new URL(url);
   const pid = u.searchParams.get("pid");
   if (pid) return pid;
 
-  // Fallback: sometimes embedded in the path itself
   const match = url.match(/\/p\/([a-zA-Z0-9]+)/);
   return match ? match[1] : null;
 }
@@ -34,10 +51,16 @@ function parsePrice(text) {
   return isNaN(val) ? null : val;
 }
 
-async function scrapeFlipkart(url) {
+async function scrapeFlipkart(inputUrl) {
+  let url = inputUrl;
+  if (isShortLink(inputUrl)) {
+    url = await resolveShortLink(inputUrl);
+    console.log(`Resolved short link ${inputUrl} → ${url}`);
+  }
+
   const pid = extractFSN(url);
   if (!pid) {
-    throw new Error(`Could not extract product id (pid) from URL: ${url}`);
+    throw new Error(`Could not extract product id (pid) from URL: ${url} (original: ${inputUrl})`);
   }
 
   const res = await fetch(url, {
@@ -56,15 +79,11 @@ async function scrapeFlipkart(url) {
   const html = await res.text();
   const $ = cheerio.load(html);
 
-  // Flipkart's class names are obfuscated/change often — these selectors
-  // are current as of build time but WILL need periodic re-checking.
-  // Prefer JSON-LD structured data when present (more stable than CSS classes).
   let title = null;
   let price = null;
   let mrp = null;
   let image_url = null;
 
-  // Try structured data first (most stable)
   $('script[type="application/ld+json"]').each((_, el) => {
     try {
       const json = JSON.parse($(el).contents().text());
@@ -82,7 +101,6 @@ async function scrapeFlipkart(url) {
     }
   });
 
-  // Fallback to visible DOM text if structured data missing
   if (!title) {
     title = $("span.VU-ZEz").first().text().trim() || $("h1 span").first().text().trim() || null;
   }
@@ -131,4 +149,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { scrapeFlipkart, extractFSN };
+module.exports = { scrapeFlipkart, extractFSN, isShortLink, resolveShortLink };
