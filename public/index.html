@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PriceKeeda — India's Smartest Price Tracker</title>
+<meta name="description" content="Track Amazon, Flipkart, Myntra & Meesho prices. See real price history, get instant alerts, never overpay again.">
+
+<!-- ═══════════════════════════════════════════════════════════
+     CONFIG — fill these in before deploying
+═══════════════════════════════════════════════════════════ -->
+<script>
+  // Public anon key is SAFE to expose client-side (RLS protects the data).
+  // Never put the service_role key here.
+  window.SUPABASE_URL = "https://your-project-ref.supabase.co";
+  window.SUPABASE_ANON_KEY = "your-anon-public-key-here";
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+
+<style>
+  :root {
+    --bg: #0b0f14;
+    --surface: #131a22;
+    --surface-2: #1a232d;
+    --border: #223040;
+    --text: #e8eef4;
+    --text-dim: #8fa3b3;
+    --accent: #22d3a6;
+    --accent-2: #4f8cff;
+    --danger: #ff6b6b;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+  }
+  header {
+    position: sticky; top: 0; z-index: 20;
+    background: rgba(11,15,20,0.85);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 20px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .logo { font-weight: 700; font-size: 20px; letter-spacing: -0.02em; }
+  .logo span { color: var(--accent); }
+
+  .hero {
+    max-width: 720px;
+    margin: 60px auto 30px;
+    padding: 0 20px;
+    text-align: center;
+  }
+  .hero h1 {
+    font-size: clamp(28px, 5vw, 42px);
+    line-height: 1.15;
+    margin: 0 0 12px;
+    letter-spacing: -0.02em;
+  }
+  .hero p { color: var(--text-dim); font-size: 16px; margin: 0 0 32px; }
+
+  .search-box {
+    display: flex;
+    gap: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px;
+  }
+  .search-box input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text);
+    font-size: 15px;
+    padding: 12px 14px;
+  }
+  .search-box input::placeholder { color: var(--text-dim); }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: #06120e;
+    border: none;
+    border-radius: 10px;
+    padding: 12px 22px;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .btn-primary:disabled { opacity: 0.6; cursor: default; }
+  .btn-primary:hover:not(:disabled) { filter: brightness(1.08); }
+
+  .platforms-row {
+    display: flex; gap: 10px; justify-content: center; margin-top: 16px; flex-wrap: wrap;
+  }
+  .platform-chip {
+    font-size: 12px; color: var(--text-dim);
+    border: 1px solid var(--border);
+    padding: 5px 12px; border-radius: 999px;
+  }
+
+  .status-msg { max-width: 720px; margin: 12px auto 0; padding: 0 20px; font-size: 14px; text-align: center; }
+  .status-msg.error { color: var(--danger); }
+  .status-msg.success { color: var(--accent); }
+
+  section.tracked {
+    max-width: 1100px;
+    margin: 50px auto;
+    padding: 0 20px;
+  }
+  .section-title {
+    font-size: 18px; font-weight: 600; margin-bottom: 16px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 16px;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    cursor: pointer;
+    transition: border-color .15s, transform .15s;
+  }
+  .card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .card img {
+    width: 100%; height: 140px; object-fit: contain;
+    background: #fff; border-radius: 10px; margin-bottom: 12px;
+  }
+  .card .platform-tag {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--accent); margin-bottom: 6px; font-weight: 600;
+  }
+  .card .title {
+    font-size: 13.5px; line-height: 1.35; margin-bottom: 10px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    min-height: 36px;
+  }
+  .card .price-row { display: flex; align-items: baseline; gap: 8px; }
+  .card .price { font-size: 18px; font-weight: 700; }
+  .card .mrp { font-size: 12.5px; color: var(--text-dim); text-decoration: line-through; }
+
+  .empty-state {
+    text-align: center; color: var(--text-dim); padding: 60px 20px;
+    border: 1px dashed var(--border); border-radius: var(--radius);
+  }
+
+  /* ---- Product modal ---- */
+  .modal-backdrop {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+    z-index: 50; align-items: center; justify-content: center; padding: 20px;
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    max-width: 640px; width: 100%; max-height: 88vh; overflow-y: auto; padding: 24px;
+  }
+  .modal-close { float: right; background: none; border: none; color: var(--text-dim); font-size: 20px; cursor: pointer; }
+  .modal h2 { font-size: 18px; margin: 0 0 4px; padding-right: 30px; }
+  .stat-strip { display: flex; gap: 12px; margin: 18px 0; flex-wrap: wrap; }
+  .stat {
+    background: var(--surface-2); border-radius: 10px; padding: 10px 14px; flex: 1; min-width: 100px;
+  }
+  .stat .label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; }
+  .stat .value { font-size: 16px; font-weight: 700; margin-top: 2px; }
+  .stat.low .value { color: var(--accent); }
+  .stat.high .value { color: var(--danger); }
+  canvas#priceChart { max-height: 260px; margin: 10px 0 20px; }
+
+  .alert-form { display: flex; gap: 8px; margin-top: 16px; }
+  .alert-form input {
+    flex: 1; background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); padding: 10px 12px; outline: none; font-size: 14px;
+  }
+
+  footer { text-align: center; color: var(--text-dim); font-size: 13px; padding: 40px 20px; }
+
+  @media (max-width: 520px) {
+    .search-box { flex-direction: column; }
+    .btn-primary { width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Price<span>Keeda</span></div>
+  <div style="font-size:13px; color:var(--text-dim);">Amazon · Flipkart · Myntra · Meesho</div>
+</header>
+
+<div class="hero">
+  <h1>Never overpay again.</h1>
+  <p>Paste any Amazon or Flipkart product link. See its real price history, spot fake discounts, get alerted the moment it drops.</p>
+
+  <div class="search-box">
+    <input id="urlInput" type="text" placeholder="Paste product link here (amazon.in or flipkart.com)…">
+    <button class="btn-primary" id="trackBtn">Track Price</button>
+  </div>
+
+  <div class="platforms-row">
+    <span class="platform-chip">✅ Amazon</span>
+    <span class="platform-chip">✅ Flipkart</span>
+    <span class="platform-chip" style="opacity:.5;">⏳ Myntra (soon)</span>
+    <span class="platform-chip" style="opacity:.5;">⏳ Meesho (soon)</span>
+  </div>
+
+  <div id="statusMsg" class="status-msg"></div>
+</div>
+
+<section class="tracked">
+  <div class="section-title">
+    <span>Recently Tracked</span>
+    <span id="countLabel" style="font-size:13px; color:var(--text-dim); font-weight:400;"></span>
+  </div>
+  <div id="grid" class="grid"></div>
+  <div id="emptyState" class="empty-state" style="display:none;">
+    No products tracked yet. Paste a link above to get started.
+  </div>
+</section>
+
+<footer>
+  PriceKeeda — built in India, for India. Not affiliated with Amazon, Flipkart, Myntra or Meesho.
+</footer>
+
+<!-- Product detail modal -->
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal">
+    <button class="modal-close" id="modalClose">✕</button>
+    <h2 id="modalTitle">Loading…</h2>
+    <div style="font-size:13px; color:var(--text-dim);" id="modalPlatform"></div>
+
+    <div class="stat-strip">
+      <div class="stat"><div class="label">Current</div><div class="value" id="statCurrent">—</div></div>
+      <div class="stat low"><div class="label">All-time Low</div><div class="value" id="statLow">—</div></div>
+      <div class="stat high"><div class="label">All-time High</div><div class="value" id="statHigh">—</div></div>
+    </div>
+
+    <canvas id="priceChart"></canvas>
+
+    <div style="font-size:13px; color:var(--text-dim); margin-bottom:6px;">Get a Telegram alert when the price drops:</div>
+    <div class="alert-form">
+      <input id="alertTarget" type="number" placeholder="Target price (₹)">
+      <input id="alertContact" type="text" placeholder="Telegram username or chat ID">
+      <button class="btn-primary" id="setAlertBtn">Set Alert</button>
+    </div>
+    <div id="alertStatus" class="status-msg"></div>
+
+    <a id="buyNowLink" href="#" target="_blank" rel="noopener" style="display:block; margin-top:18px;">
+      <button class="btn-primary" style="width:100%;">View on Store →</button>
+    </a>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// SUPABASE CLIENT
+// ============================================================
+const supabase = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+
+// ============================================================
+// HELPERS
+// ============================================================
+function formatINR(num) {
+  if (num === null || num === undefined) return "—";
+  return "₹" + Number(num).toLocaleString("en-IN");
+}
+
+function detectPlatform(url) {
+  if (/amazon\.in/i.test(url)) return "amazon";
+  if (/flipkart\.com/i.test(url)) return "flipkart";
+  if (/myntra\.com/i.test(url)) return "myntra";
+  if (/meesho\.com/i.test(url)) return "meesho";
+  return null;
+}
+
+function showStatus(el, msg, type) {
+  el.textContent = msg;
+  el.className = "status-msg" + (type ? " " + type : "");
+}
+
+// ============================================================
+// TRACK NEW PRODUCT
+// Note: this inserts a bare row with just the URL/platform —
+// the actual scrape (title/price/image) happens on the next
+// GitHub Actions cron run, or you can trigger scripts/run-all.js
+// manually. This keeps the frontend scrape-free (no server needed).
+// ============================================================
+const urlInput = document.getElementById("urlInput");
+const trackBtn = document.getElementById("trackBtn");
+const statusMsg = document.getElementById("statusMsg");
+
+trackBtn.addEventListener("click", async () => {
+  const url = urlInput.value.trim();
+  if (!url) {
+    showStatus(statusMsg, "Paste a product link first.", "error");
+    return;
+  }
+
+  const platform = detectPlatform(url);
+  if (!platform) {
+    showStatus(statusMsg, "Only Amazon and Flipkart links are supported right now.", "error");
+    return;
+  }
+  if (platform === "myntra" || platform === "meesho") {
+    showStatus(statusMsg, `${platform} support is coming soon — Amazon & Flipkart work today.`, "error");
+    return;
+  }
+
+  trackBtn.disabled = true;
+  trackBtn.textContent = "Adding…";
+
+  try {
+    // Extract a placeholder product_id from URL until the scraper enriches it.
+    // The actual scraper re-derives the canonical ASIN/pid, so this is just
+    // a temporary unique key to avoid duplicate inserts before first scrape.
+    const tempId = url.split("?")[0].split("/").filter(Boolean).pop() || url;
+
+    const { error } = await supabase.from("products").insert({
+      platform,
+      product_id: tempId,
+      product_url: url,
+    });
+
+    if (error) {
+      if (error.code === "23505") {
+        showStatus(statusMsg, "This product is already being tracked.", "error");
+      } else {
+        throw error;
+      }
+    } else {
+      showStatus(statusMsg, "Added! Price data will appear within a few hours after the next scrape cycle.", "success");
+      urlInput.value = "";
+      loadProducts();
+    }
+  } catch (err) {
+    console.error(err);
+    showStatus(statusMsg, "Something went wrong. Try again.", "error");
+  }
+
+  trackBtn.disabled = false;
+  trackBtn.textContent = "Track Price";
+});
+
+// ============================================================
+// LOAD & RENDER TRACKED PRODUCTS
+// ============================================================
+const grid = document.getElementById("grid");
+const emptyState = document.getElementById("emptyState");
+const countLabel = document.getElementById("countLabel");
+
+async function loadProducts() {
+  const { data, error } = await supabase
+    .from("products")
+    .select("id, platform, title, image_url, current_price, mrp, product_url")
+    .order("last_checked_at", { ascending: false, nullsFirst: false })
+    .limit(60);
+
+  if (error) {
+    console.error("loadProducts error:", error.message);
+    return;
+  }
+
+  grid.innerHTML = "";
+  countLabel.textContent = data.length ? `${data.length} products` : "";
+  emptyState.style.display = data.length ? "none" : "block";
+
+  data.forEach((p) => {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `
+      <img src="${p.image_url || 'https://via.placeholder.com/300x200?text=No+Image'}" alt="">
+      <div class="platform-tag">${p.platform}</div>
+      <div class="title">${p.title || "Fetching product details…"}</div>
+      <div class="price-row">
+        <span class="price">${formatINR(p.current_price)}</span>
+        ${p.mrp && p.mrp !== p.current_price ? `<span class="mrp">${formatINR(p.mrp)}</span>` : ""}
+      </div>
+    `;
+    card.addEventListener("click", () => openProductModal(p.id));
+    grid.appendChild(card);
+  });
+}
+
+// ============================================================
+// PRODUCT DETAIL MODAL + PRICE HISTORY CHART
+// ============================================================
+const modalBackdrop = document.getElementById("modalBackdrop");
+const modalClose = document.getElementById("modalClose");
+let chartInstance = null;
+let currentProductId = null;
+
+modalClose.addEventListener("click", () => modalBackdrop.classList.remove("open"));
+modalBackdrop.addEventListener("click", (e) => {
+  if (e.target === modalBackdrop) modalBackdrop.classList.remove("open");
+});
+
+async function openProductModal(productId) {
+  currentProductId = productId;
+  modalBackdrop.classList.add("open");
+  document.getElementById("modalTitle").textContent = "Loading…";
+
+  const { data: product, error: pErr } = await supabase
+    .from("products")
+    .select("*")
+    .eq("id", productId)
+    .single();
+
+  if (pErr || !product) {
+    console.error(pErr);
+    return;
+  }
+
+  document.getElementById("modalTitle").textContent = product.title || "Untitled product";
+  document.getElementById("modalPlatform").textContent = product.platform.toUpperCase();
+  document.getElementById("statCurrent").textContent = formatINR(product.current_price);
+  document.getElementById("buyNowLink").href = product.product_url;
+
+  const { data: history, error: hErr } = await supabase
+    .from("price_history")
+    .select("price, recorded_at")
+    .eq("product_id", productId)
+    .order("recorded_at", { ascending: true });
+
+  if (hErr) {
+    console.error(hErr);
+    return;
+  }
+
+  const prices = history.map((h) => h.price);
+  const low = prices.length ? Math.min(...prices) : null;
+  const high = prices.length ? Math.max(...prices) : null;
+  document.getElementById("statLow").textContent = formatINR(low);
+  document.getElementById("statHigh").textContent = formatINR(high);
+
+  const ctx = document.getElementById("priceChart").getContext("2d");
+  if (chartInstance) chartInstance.destroy();
+  chartInstance = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: history.map((h) => new Date(h.recorded_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })),
+      datasets: [{
+        label: "Price (₹)",
+        data: prices,
+        borderColor: "#22d3a6",
+        backgroundColor: "rgba(34,211,166,0.1)",
+        fill: true,
+        tension: 0.25,
+        pointRadius: 2,
+      }],
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: "#8fa3b3" }, grid: { color: "#223040" } },
+        y: { ticks: { color: "#8fa3b3" }, grid: { color: "#223040" } },
+      },
+    },
+  });
+}
+
+// ============================================================
+// SET PRICE ALERT (Telegram)
+// ============================================================
+document.getElementById("setAlertBtn").addEventListener("click", async () => {
+  const target = document.getElementById("alertTarget").value;
+  const contact = document.getElementById("alertContact").value.trim();
+  const statusEl = document.getElementById("alertStatus");
+
+  if (!target || !contact) {
+    showStatus(statusEl, "Enter both a target price and your Telegram contact.", "error");
+    return;
+  }
+
+  const { error } = await supabase.from("alerts").insert({
+    product_id: currentProductId,
+    contact_method: "telegram",
+    contact_value: contact,
+    target_price: parseFloat(target),
+  });
+
+  if (error) {
+    console.error(error);
+    showStatus(statusEl, "Failed to set alert. Try again.", "error");
+  } else {
+    showStatus(statusEl, "Alert set! We'll notify you when the price drops.", "success");
+    document.getElementById("alertTarget").value = "";
+    document.getElementById("alertContact").value = "";
+  }
+});
+
+// ============================================================
+// INIT
+// ============================================================
+loadProducts();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,18 @@
+{
+  "name": "price-tracker-india",
+  "version": "0.1.0",
+  "description": "India price tracker for Amazon, Flipkart, Myntra, Meesho - price history, alerts, and accurate deal detection.",
+  "main": "scripts/run-all.js",
+  "scripts": {
+    "scrape:amazon": "node scripts/scrape-amazon.js",
+    "scrape:flipkart": "node scripts/scrape-flipkart.js",
+    "scrape:all": "node scripts/run-all.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "cheerio": "^1.0.0",
+    "node-fetch": "^2.7.0"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}
